@@ -1,0 +1,7 @@
+streamlit
+pandas
+matplotlib
+jinja2
+weasyprint
+numpy
+openpyxl
