@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from weasyprint import HTML
 
+# -------------------- Streamlit Config --------------------
 st.set_page_config(page_title="Client Asset Report Generator", layout="wide")
 st.title("📊 Client Asset Report Generator (PDF)")
 
@@ -36,7 +37,7 @@ def fig_to_base64_png(fig) -> str:
     return base64.b64encode(buf.read()).decode("utf-8")
 
 def format_indian_currency(amount):
-    """Format number with Indian comma system (lakhs, crores) with ₹ symbol, no decimals."""
+    """Format number with Indian comma system (lakhs, crores) with ₹ symbol."""
     amount = float(amount)
     if amount == 0:
         return "₹ 0"
@@ -58,6 +59,7 @@ def format_indian_currency(amount):
 
 
 def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: date, chart_b64: str) -> str:
+    """Build a single unified HTML document with all three pages and proper page breaks."""
     rows_html = []
     for _, row in client_df.iterrows():
         if row['Asset Type'] == 'Total':
@@ -186,7 +188,7 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 
 
 def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt: date) -> bytes:
-    # Exclude 'Total' row for pie
+    """Generate PDF with cover + report + end page."""
     plot_df = client_df[client_df["Asset Type"].str.lower() != "total"]
     plot_df = plot_df[plot_df["Value"] > 0]
 
@@ -196,54 +198,56 @@ def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt:
     ]
     colors = refined_palette[:max(1, len(plot_df))]
 
-    fig, ax = plt.subplots(figsize=(9,9), dpi=150)
+    fig, ax = plt.subplots(figsize=(10,10), dpi=150)
     wedges, _ = ax.pie(
         plot_df["Value"],
         labels=None,
         autopct=None,
         startangle=90,
         colors=colors,
-        radius=1.3,
+        radius=1.4,
         wedgeprops={'edgecolor': 'white', 'linewidth': 2}
     )
 
     total = plot_df["Value"].sum()
-
     left_labels, right_labels = [], []
+
     for i, wedge in enumerate(wedges):
         angle = (wedge.theta2 + wedge.theta1) / 2.0
         x, y = np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))
         percent = 100 * plot_df["Value"].iloc[i] / total
         label = plot_df["Asset Type"].iloc[i]
-        if x > 0: right_labels.append((y, x, label, percent))
-        else: left_labels.append((y, x, label, percent))
+        if x > 0:
+            right_labels.append((y, x, label, percent))
+        else:
+            left_labels.append((y, x, label, percent))
 
     left_labels.sort(key=lambda z: z[0], reverse=True)
     right_labels.sort(key=lambda z: z[0], reverse=True)
     max_labels = max(len(left_labels), len(right_labels), 1)
-    y_positions = np.linspace(1.4, -1.4, max_labels)
+    y_positions = np.linspace(1.6, -1.6, max_labels)
 
     for (y, x, label, percent), new_y in zip(right_labels, y_positions[:len(right_labels)]):
         ax.annotate(
-            f"{label}\n{percent:.1f}%",
-            xy=(x, y), xytext=(1.7, new_y),
-            ha='left', va='center', fontsize=10, fontweight='bold',
-            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", lw=0.8),
-            arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=0,angleB=90")
+            f"{label}\n{percent:.2f}%",
+            xy=(x, y), xytext=(1.9, new_y),
+            ha='left', va='center', fontsize=11, fontweight='bold', color='#333',
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="gray", linewidth=0.8),
+            arrowprops=dict(arrowstyle="-", color="gray", lw=1.2, connectionstyle="angle,angleA=0,angleB=90")
         )
 
     for (y, x, label, percent), new_y in zip(left_labels, y_positions[:len(left_labels)]):
         ax.annotate(
-            f"{label}\n{percent:.1f}%",
-            xy=(x, y), xytext=(-1.7, new_y),
-            ha='right', va='center', fontsize=10, fontweight='bold',
-            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", lw=0.8),
-            arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=180,angleB=90")
+            f"{label}\n{percent:.2f}%",
+            xy=(x, y), xytext=(-1.9, new_y),
+            ha='right', va='center', fontsize=11, fontweight='bold', color='#333',
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="gray", linewidth=0.8),
+            arrowprops=dict(arrowstyle="-", color="gray", lw=1.2, connectionstyle="angle,angleA=180,angleB=90")
         )
 
     ax.axis("equal")
-    ax.set_xlim(-2.2, 2.2)
-    ax.set_ylim(-1.9, 1.9)
+    ax.set_xlim(-2.5, 2.5)
+    ax.set_ylim(-2.2, 2.2)
 
     chart_b64 = fig_to_base64_png(fig)
     html_str = build_unified_html(client_name, client_df, report_dt, chart_b64)
