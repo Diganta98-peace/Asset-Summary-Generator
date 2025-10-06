@@ -25,7 +25,7 @@ with st.sidebar:
     4. Download individual or multiple client reports.
     """)
 
-# ====== CONFIG: where your templates + bg images live ======
+# ====== CONFIG: template + images ======
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # -------------------- Helpers --------------------
@@ -83,7 +83,6 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
     client_name_upper = client_name.upper()
     report_date_str = report_dt.strftime("%d %B %Y").upper()
 
-    # HTML with safer CSS
     return f"""
 <!DOCTYPE html>
 <html>
@@ -134,7 +133,7 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 
   .table-section {{
     width: 700px;
-    margin: 0 auto;
+    margin: 20px auto 0 auto;
   }}
   table {{
     width: 100%;
@@ -149,6 +148,14 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
   }}
   th {{ background:#4a4a4a; color:white; }}
   tr:nth-child(even){{ background:#f2f2f2; }}
+
+  .disclaimer {{
+    margin-top: 12px;
+    font-size: 11px;
+    font-style: italic;
+    text-align: center;
+    color: #444;
+  }}
 
   .end-page {{
     width: 794px; height: 1123px;
@@ -172,6 +179,7 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
         <thead><tr><th>Asset Type</th><th>Value</th><th>% Allocation</th></tr></thead>
         <tbody>{rows_html}</tbody>
       </table>
+      <div class="disclaimer">This report was generated on {report_date_str}.</div>
     </div>
   </div>
 
@@ -181,7 +189,6 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 """
 
 def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt: date) -> bytes:
-    # Pie chart
     plot_df = client_df[client_df["Asset Type"].str.lower() != "total"]
     plot_df = plot_df[plot_df["Value"] > 0]
 
@@ -190,10 +197,17 @@ def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt:
     colors = colors[:max(1, len(plot_df))]
 
     fig, ax = plt.subplots(figsize=(6,6))
-    wedges, _ = ax.pie(plot_df["Value"], startangle=90, colors=colors)
+    wedges, texts, autotexts = ax.pie(
+        plot_df["Value"],
+        labels=plot_df["Asset Type"],
+        autopct="%1.1f%%",
+        startangle=90,
+        colors=colors,
+        textprops={"fontsize": 10}
+    )
     ax.axis("equal")
-    chart_b64 = fig_to_base64_png(fig)
 
+    chart_b64 = fig_to_base64_png(fig)
     html_str = build_unified_html(client_name, client_df, report_dt, chart_b64)
     return HTML(string=html_str, base_url=TEMPLATE_DIR).write_pdf()
 
