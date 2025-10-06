@@ -10,7 +10,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from jinja2 import Template
 from weasyprint import HTML
 
 # -------------------- Streamlit Config --------------------
@@ -27,7 +26,7 @@ with st.sidebar:
     """)
 
 # ====== CONFIG: where your templates + bg images live ======
-TEMPLATE_DIR = r"C:\Users\DELL\OneDrive\Desktop\Asset Summary"
+TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # -------------------- Helpers --------------------
 def clean_number(x):
@@ -84,7 +83,7 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
     client_name_upper = client_name.upper()
     report_date_str = report_dt.strftime("%d %B %Y").upper()
 
-    # HTML with background images (relative path -> resolved via base_url=TEMPLATE_DIR)
+    # HTML with safer CSS
     return f"""
 <!DOCTYPE html>
 <html>
@@ -93,12 +92,13 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 <title>Client Asset Report</title>
 <style>
   @page {{ size: A4; margin: 0; }}
-  body {{ margin:0; padding:0; font-family: 'Open Sans', Arial, sans-serif; }}
+  body {{ margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; }}
 
   .cover-page {{
     width: 794px; height: 1123px;
     background: url('cover_page_bg.jpg') no-repeat center/cover;
     page-break-after: always;
+    position: relative;
   }}
   .client-name {{
     position: absolute; top: 70px; right: 300px;
@@ -113,10 +113,40 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
     width: 794px; height: 1123px;
     padding: 40px; background: white;
     page-break-after: always;
+    box-sizing: border-box;
   }}
   .header h1 {{ text-align:center; margin:0 0 20px; }}
-  table {{ width:100%; border-collapse:collapse; font-size:12px; }}
-  th, td {{ border:1px solid #b0b0b0; padding:10px; }}
+
+  .chart-box {{
+    width: 500px;
+    margin: 0 auto 20px auto;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    background: white;
+  }}
+  .chart-box img {{
+    max-width: 480px;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+  }}
+
+  .table-section {{
+    width: 700px;
+    margin: 0 auto;
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    table-layout: fixed;
+  }}
+  th, td {{
+    border: 1px solid #b0b0b0;
+    padding: 8px;
+    word-wrap: break-word;
+  }}
   th {{ background:#4a4a4a; color:white; }}
   tr:nth-child(even){{ background:#f2f2f2; }}
 
@@ -134,13 +164,15 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 
   <div class="report-page">
     <div class="header"><h1>ASSET ALLOCATION</h1></div>
-    <div style="text-align:center;">
-      <img src="data:image/png;base64,{chart_b64}" style="max-width:500px;" />
+    <div class="chart-box">
+      <img src="data:image/png;base64,{chart_b64}" alt="Asset Allocation Chart"/>
     </div>
-    <table>
-      <thead><tr><th>Asset Type</th><th>Value</th><th>% Allocation</th></tr></thead>
-      <tbody>{rows_html}</tbody>
-    </table>
+    <div class="table-section">
+      <table>
+        <thead><tr><th>Asset Type</th><th>Value</th><th>% Allocation</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
   </div>
 
   <div class="end-page"></div>
@@ -149,11 +181,12 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 """
 
 def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt: date) -> bytes:
-    # Pie chart data
+    # Pie chart
     plot_df = client_df[client_df["Asset Type"].str.lower() != "total"]
     plot_df = plot_df[plot_df["Value"] > 0]
 
-    colors = ["#d65a8d","#d4b483","#274472","#c0c0c0","#3d6ba0","#f5e6d3","#5f84ce","#a8dadc","#f2a7bb"]
+    colors = ["#d65a8d","#d4b483","#274472","#c0c0c0","#3d6ba0",
+              "#f5e6d3","#5f84ce","#a8dadc","#f2a7bb"]
     colors = colors[:max(1, len(plot_df))]
 
     fig, ax = plt.subplots(figsize=(6,6))
