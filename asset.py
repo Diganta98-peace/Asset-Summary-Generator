@@ -196,16 +196,55 @@ def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt:
               "#f5e6d3","#5f84ce","#a8dadc","#f2a7bb"]
     colors = colors[:max(1, len(plot_df))]
 
-    fig, ax = plt.subplots(figsize=(6,6))
-    wedges, texts, autotexts = ax.pie(
+    fig, ax = plt.subplots(figsize=(8,8), dpi=150)
+    wedges, _ = ax.pie(
         plot_df["Value"],
-        labels=plot_df["Asset Type"],
-        autopct="%1.1f%%",
+        labels=None,
+        autopct=None,
         startangle=90,
         colors=colors,
-        textprops={"fontsize": 10}
+        radius=1.2,
+        wedgeprops={'edgecolor': 'white', 'linewidth': 2}
     )
+
+    total = plot_df["Value"].sum()
+
+    left_labels, right_labels = [], []
+    for i, wedge in enumerate(wedges):
+        angle = (wedge.theta2 + wedge.theta1) / 2.0
+        x, y = np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))
+        percent = 100 * plot_df["Value"].iloc[i] / total
+        label = f"{plot_df['Asset Type'].iloc[i]} ({percent:.1f}%)"
+        if x > 0:
+            right_labels.append((y, x, label))
+        else:
+            left_labels.append((y, x, label))
+
+    left_labels.sort(key=lambda z: z[0], reverse=True)
+    right_labels.sort(key=lambda z: z[0], reverse=True)
+
+    n_left, n_right = len(left_labels), len(right_labels)
+    max_labels = max(n_left, n_right, 1)
+    y_positions = np.linspace(1.2, -1.2, max_labels)
+
+    for (y, x, label), new_y in zip(right_labels, y_positions[:n_right]):
+        ax.annotate(
+            label, xy=(x, y), xytext=(1.5, new_y),
+            ha='left', va='center',
+            fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=0.5),
+            arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=0,angleB=90")
+        )
+
+    for (y, x, label), new_y in zip(left_labels, y_positions[:n_left]):
+        ax.annotate(
+            label, xy=(x, y), xytext=(-1.5, new_y),
+            ha='right', va='center',
+            fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=0.5),
+            arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=180,angleB=90")
+        )
+
     ax.axis("equal")
+    ax.set_xlim(-2, 2); ax.set_ylim(-1.8, 1.8)
 
     chart_b64 = fig_to_base64_png(fig)
     html_str = build_unified_html(client_name, client_df, report_dt, chart_b64)
