@@ -12,24 +12,15 @@ import matplotlib.pyplot as plt
 
 from weasyprint import HTML
 
-# -------------------- Streamlit Config --------------------
 st.set_page_config(page_title="Client Asset Report Generator", layout="wide")
-st.title("📊 Client Asset Report Generator")
+st.title("📊 Client Asset Report Generator (PDF)")
 
-with st.sidebar:
-    st.markdown("### ℹ️ Instructions")
-    st.write("""
-    1. Upload the **Master Excel** file.
-    2. Select report date.
-    3. Preview client allocations.
-    4. Download individual or multiple client reports.
-    """)
-
-# ====== CONFIG: template + images ======
+# ====== CONFIG: where your templates + bg images live ======
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# -------------------- Helpers --------------------
+# ---------- Helpers ----------
 def clean_number(x):
+    """Coerce values like '₹ 1,23,456' or 'NA' to float safely."""
     try:
         x = str(x).replace("₹", "").replace(",", "").strip()
         return float(x) if x not in ["", "nan", "None"] else 0.0
@@ -37,6 +28,7 @@ def clean_number(x):
         return 0.0
 
 def fig_to_base64_png(fig) -> str:
+    """Convert a Matplotlib figure to base64 PNG string (no header)."""
     buf = BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=150, transparent=True)
     plt.close(fig)
@@ -44,6 +36,7 @@ def fig_to_base64_png(fig) -> str:
     return base64.b64encode(buf.read()).decode("utf-8")
 
 def format_indian_currency(amount):
+    """Format number with Indian comma system (lakhs, crores) with ₹ symbol, no decimals."""
     amount = float(amount)
     if amount == 0:
         return "₹ 0"
@@ -63,7 +56,7 @@ def format_indian_currency(amount):
         formatted = ','.join(groups) + ',' + last_three
     return f"₹ {formatted}"
 
-# -------------------- Report Builders --------------------
+
 def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: date, chart_b64: str) -> str:
     rows_html = []
     for _, row in client_df.iterrows():
@@ -94,10 +87,10 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
   body {{ margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; }}
 
   .cover-page {{
+    position: relative;
     width: 794px; height: 1123px;
     background: url('cover_page_bg.jpg') no-repeat center/cover;
     page-break-after: always;
-    position: relative;
   }}
   .client-name {{
     position: absolute; top: 70px; right: 300px;
@@ -110,11 +103,11 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 
   .report-page {{
     width: 794px; height: 1123px;
-    padding: 40px; background: white;
+    padding: 30px 40px; background: white;
     page-break-after: always;
     box-sizing: border-box;
   }}
-  .header h1 {{ text-align:center; margin:0 0 20px; }}
+  .header h1 {{ text-align:center; margin:0 0 20px; font-size: 22px; }}
 
   .chart-box {{
     width: 500px;
@@ -136,10 +129,10 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
     margin: 20px auto 0 auto;
   }}
   table {{
-    width: 100%;
+    width: 700px;
+    margin: 0 auto;
     border-collapse: collapse;
     font-size: 12px;
-    table-layout: fixed;
   }}
   th, td {{
     border: 1px solid #b0b0b0;
@@ -158,6 +151,7 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
   }}
 
   .end-page {{
+    position: relative;
     width: 794px; height: 1123px;
     background: url('end_page_bg.jpg') no-repeat center/cover;
   }}
@@ -172,11 +166,13 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
   <div class="report-page">
     <div class="header"><h1>ASSET ALLOCATION</h1></div>
     <div class="chart-box">
-      <img src="data:image/png;base64,{chart_b64}" alt="Asset Allocation Chart"/>
+      <img src="data:image/png;base64,{chart_b64}" alt="Asset Allocation Pie Chart"/>
     </div>
     <div class="table-section">
       <table>
-        <thead><tr><th>Asset Type</th><th>Value</th><th>% Allocation</th></tr></thead>
+        <thead>
+          <tr><th>Asset Type</th><th>Value</th><th>% Allocation</th></tr>
+        </thead>
         <tbody>{rows_html}</tbody>
       </table>
       <div class="disclaimer">This report was generated on {report_date_str}.</div>
@@ -188,22 +184,26 @@ def build_unified_html(client_name: str, client_df: pd.DataFrame, report_dt: dat
 </html>
 """
 
+
 def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt: date) -> bytes:
+    # Exclude 'Total' row for pie
     plot_df = client_df[client_df["Asset Type"].str.lower() != "total"]
     plot_df = plot_df[plot_df["Value"] > 0]
 
-    colors = ["#d65a8d","#d4b483","#274472","#c0c0c0","#3d6ba0",
-              "#f5e6d3","#5f84ce","#a8dadc","#f2a7bb"]
-    colors = colors[:max(1, len(plot_df))]
+    refined_palette = [
+        "#d65a8d", "#d4b483", "#274472", "#c0c0c0", "#3d6ba0",
+        "#f5e6d3", "#5f84ce", "#a8dadc", "#f2a7bb"
+    ]
+    colors = refined_palette[:max(1, len(plot_df))]
 
-    fig, ax = plt.subplots(figsize=(8,8), dpi=150)
+    fig, ax = plt.subplots(figsize=(9,9), dpi=150)
     wedges, _ = ax.pie(
         plot_df["Value"],
         labels=None,
         autopct=None,
         startangle=90,
         colors=colors,
-        radius=1.2,
+        radius=1.3,
         wedgeprops={'edgecolor': 'white', 'linewidth': 2}
     )
 
@@ -214,93 +214,92 @@ def build_client_pdf_bytes(client_name: str, client_df: pd.DataFrame, report_dt:
         angle = (wedge.theta2 + wedge.theta1) / 2.0
         x, y = np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))
         percent = 100 * plot_df["Value"].iloc[i] / total
-        label = f"{plot_df['Asset Type'].iloc[i]} ({percent:.1f}%)"
-        if x > 0:
-            right_labels.append((y, x, label))
-        else:
-            left_labels.append((y, x, label))
+        label = plot_df["Asset Type"].iloc[i]
+        if x > 0: right_labels.append((y, x, label, percent))
+        else: left_labels.append((y, x, label, percent))
 
     left_labels.sort(key=lambda z: z[0], reverse=True)
     right_labels.sort(key=lambda z: z[0], reverse=True)
+    max_labels = max(len(left_labels), len(right_labels), 1)
+    y_positions = np.linspace(1.4, -1.4, max_labels)
 
-    n_left, n_right = len(left_labels), len(right_labels)
-    max_labels = max(n_left, n_right, 1)
-    y_positions = np.linspace(1.2, -1.2, max_labels)
-
-    for (y, x, label), new_y in zip(right_labels, y_positions[:n_right]):
+    for (y, x, label, percent), new_y in zip(right_labels, y_positions[:len(right_labels)]):
         ax.annotate(
-            label, xy=(x, y), xytext=(1.5, new_y),
-            ha='left', va='center',
-            fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=0.5),
+            f"{label}\n{percent:.1f}%",
+            xy=(x, y), xytext=(1.7, new_y),
+            ha='left', va='center', fontsize=10, fontweight='bold',
+            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", lw=0.8),
             arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=0,angleB=90")
         )
 
-    for (y, x, label), new_y in zip(left_labels, y_positions[:n_left]):
+    for (y, x, label, percent), new_y in zip(left_labels, y_positions[:len(left_labels)]):
         ax.annotate(
-            label, xy=(x, y), xytext=(-1.5, new_y),
-            ha='right', va='center',
-            fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", lw=0.5),
+            f"{label}\n{percent:.1f}%",
+            xy=(x, y), xytext=(-1.7, new_y),
+            ha='right', va='center', fontsize=10, fontweight='bold',
+            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="gray", lw=0.8),
             arrowprops=dict(arrowstyle="-", color="gray", lw=1, connectionstyle="angle,angleA=180,angleB=90")
         )
 
     ax.axis("equal")
-    ax.set_xlim(-2, 2); ax.set_ylim(-1.8, 1.8)
+    ax.set_xlim(-2.2, 2.2)
+    ax.set_ylim(-1.9, 1.9)
 
     chart_b64 = fig_to_base64_png(fig)
     html_str = build_unified_html(client_name, client_df, report_dt, chart_b64)
     return HTML(string=html_str, base_url=TEMPLATE_DIR).write_pdf()
 
-# -------------------- UI --------------------
-uploaded_file = st.file_uploader("📂 Upload Master Excel", type=["xlsx"])
-report_date = st.date_input("📅 Report Date", value=date.today())
-st.caption(f"📁 Templates folder: `{TEMPLATE_DIR}`")
+
+# ---------- UI ----------
+uploaded_file = st.file_uploader("📂 Upload Master Excel File", type=["xlsx"])
+report_date = st.date_input("📅 Select Report Date", value=date.today())
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file, dtype=str).fillna("0")
-    df = df.replace(["NA","N.A","N/A","na","n.a","n/a","","Pending","pending"], "0")
+    df = df.replace(["NA", "N.A", "N/A", "na", "n.a", "n/a", "", "Pending", "pending"], "0")
 
     for col in df.columns[1:]:
         df[col] = df[col].apply(clean_number)
 
-    df = df[df.iloc[:,0].str.strip() != ""]
-    client_list = df.iloc[:,0].astype(str).tolist()
+    df = df[df.iloc[:, 0].str.strip() != ""]
+    client_list = df.iloc[:, 0].astype(str).tolist()
 
-    st.success("✅ File processed successfully!")
+    st.success("✅ File cleaned and processed successfully!")
+    st.write("### Preview of Cleaned Data")
     st.dataframe(df.head())
 
-    selected_client = st.selectbox("🔎 Preview Client", client_list)
+    selected_client = st.selectbox("🔎 Select a Client to Preview", client_list)
     if selected_client:
-        row = df[df.iloc[:,0]==selected_client].iloc[0]
+        row = df[df.iloc[:, 0] == selected_client].iloc[0]
         assets = row.iloc[1:]
         client_df = pd.DataFrame({"Asset Type": assets.index, "Value": assets.values.astype(float)})
         total_value = client_df["Value"].sum()
-        client_df["% Allocation"] = (client_df["Value"]/total_value*100).round(2) if total_value>0 else 0
+        client_df["% Allocation"] = (client_df["Value"] / (total_value if total_value else 1) * 100).round(2)
         client_df = pd.concat([client_df, pd.DataFrame({"Asset Type":["Total"],"Value":[total_value],"% Allocation":[100]})])
 
         st.dataframe(client_df)
 
-        try:
-            pdf_bytes = build_client_pdf_bytes(selected_client, client_df, report_date)
-            st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{selected_client}_Report.pdf", mime="application/pdf")
-        except Exception as e:
-            st.error(f"PDF generation failed: {e}")
+        pdf_bytes = build_client_pdf_bytes(selected_client, client_df, report_date)
+        st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{selected_client}_Report.pdf", mime="application/pdf")
 
     st.write("---")
-    st.write("### 📦 Generate Multiple Reports")
+    st.write("### 📦 Download Multiple Client Reports")
     selected_clients = st.multiselect("Select Clients", client_list)
-    if st.button("Generate ZIP"):
-        if selected_clients:
+    if st.button("Generate ZIP for Selected Clients"):
+        if not selected_clients:
+            st.warning("⚠️ Please select at least one client.")
+        else:
             out = BytesIO()
-            with zipfile.ZipFile(out, "w") as zf:
+            with zipfile.ZipFile(out, "w") as zipf:
                 for cname in selected_clients:
-                    crow = df[df.iloc[:,0]==cname].iloc[0]
-                    assets = crow.iloc[1:]
-                    cdf = pd.DataFrame({"Asset Type": assets.index, "Value": assets.values.astype(float)})
+                    crow = df[df.iloc[:, 0] == cname].iloc[0]
+                    cassets = crow.iloc[1:]
+                    cdf = pd.DataFrame({"Asset Type": cassets.index, "Value": cassets.values.astype(float)})
                     ctotal = cdf["Value"].sum()
-                    cdf["% Allocation"] = (cdf["Value"]/ctotal*100).round(2) if ctotal>0 else 0
+                    cdf["% Allocation"] = (cdf["Value"] / (ctotal if ctotal else 1) * 100).round(2)
                     cdf = pd.concat([cdf, pd.DataFrame({"Asset Type":["Total"],"Value":[ctotal],"% Allocation":[100]})])
                     pdf = build_client_pdf_bytes(cname, cdf, report_date)
-                    zf.writestr(f"{cname}_Report.pdf", pdf)
-            st.download_button("📦 Download ZIP", data=out.getvalue(), file_name="Client_Reports.zip", mime="application/zip")
-        else:
-            st.warning("⚠️ Select at least one client.")
+                    zipf.writestr(f"{cname}_Report.pdf", pdf)
+
+            st.success("✅ Reports generated successfully!")
+            st.download_button("📦 Download Selected Reports (ZIP)", data=out.getvalue(), file_name="Selected_Client_Reports.zip", mime="application/zip")
